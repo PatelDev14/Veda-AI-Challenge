@@ -48,9 +48,9 @@ struct InputBarView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            HStack(spacing: 10) {
+            HStack(alignment: .bottom, spacing: 10) {
                 // Expandable Attachment Menu
-                HStack(spacing: 10) {
+                HStack(alignment: .bottom, spacing: 10) {
                     Button {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                             showAttachments.toggle()
@@ -67,6 +67,7 @@ struct InputBarView: View {
                         HStack(spacing: 12) {
                             iconButton(icon: "camera.fill", color: .orange, action: onCameraTap)
                             iconButton(icon: "photo.fill", color: .purple, action: onPhotoLibraryTap)
+                            //micButton
                         }
                         .transition(.move(edge: .leading).combined(with: .opacity))
                     }
@@ -114,7 +115,7 @@ struct InputBarView: View {
         )
         .textFieldStyle(.plain)
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(.ultraThinMaterial.opacity(0.9))
@@ -123,7 +124,8 @@ struct InputBarView: View {
                         .stroke(Color.white.opacity(0.07), lineWidth: 0.6)
                 )
         )
-        .lineLimit(1...6)
+        .lineLimit(1...4)
+        .fixedSize(horizontal: false, vertical: true)
         .onSubmit(of: .text) {
             if !isTextEmpty { onSend() }
         }
@@ -133,7 +135,6 @@ struct InputBarView: View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onSend()
-            text = ""
             withAnimation(.easeOut(duration: 0.12)) { isSendHighlighted = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 withAnimation { isSendHighlighted = false }

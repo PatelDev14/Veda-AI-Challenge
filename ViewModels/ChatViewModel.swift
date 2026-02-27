@@ -12,6 +12,11 @@ class ChatViewModel {
     var showErrorBanner: Bool = false
     var errorMessage: String = ""
 
+    // Tracks which SavedConversation is currently loaded (if any).
+    // nil  → fresh unsaved chat
+    // set  → restored from history; saving must UPDATE this record, not insert new
+    var activeConversation: SavedConversation? = nil
+
     // MARK: - Status Check
     func checkStatus() {
         Task {
@@ -19,7 +24,6 @@ class ChatViewModel {
                 await FoundationModelService.shared.ensureInitialized()
             }
             isModelLoading = false
-            print("✅ ViewModel: Veda is ready")
         }
     }
 
@@ -57,18 +61,20 @@ class ChatViewModel {
             }
 
             if #available(iOS 26.0, *) {
+                LiveActivityManager.shared.start(question: userContent)
                 await FoundationModelService.shared.generateResponse(
                     for: finalPrompt,
                     updateHandler: { [weak self] partial in
                         guard let self else { return }
+                        LiveActivityManager.shared.update(partial: partial)
                         if placeholderIndex < self.messages.count {
                             self.messages[placeholderIndex].content = partial
                         }
                     },
                     completion: { [weak self] result in
-                        // completion is also @MainActor — same rule, no Task wrapper needed.
                         guard let self else { return }
                         self.isGenerating = false
+                        LiveActivityManager.shared.stop()
                         switch result {
                         case .failure(let error):
                             if placeholderIndex < self.messages.count {
@@ -90,6 +96,16 @@ class ChatViewModel {
             }
         }
     }
+    
+    // MARK: - Restore from history
+    // Sets activeConversation so ChatView knows to UPDATE on next save.
+    func restore(conversation: SavedConversation, messages: [Message]) {
+        self.messages = messages
+        self.activeConversation = conversation
+        if #available(iOS 26.0, *) {
+            Task { await FoundationModelService.shared.resetSession() }
+        }
+    }
 
     // MARK: - Retry
     func retryLastUserMessage() {
@@ -106,6 +122,7 @@ class ChatViewModel {
 
     // MARK: - Clear
     func clearChat() {
+        activeConversation = nil
         messages.removeAll()
         if #available(iOS 26.0, *) {
             Task { await FoundationModelService.shared.resetSession() }

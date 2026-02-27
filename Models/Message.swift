@@ -23,3 +23,8 @@ struct Message: Identifiable, Equatable {
         lhs.isError == rhs.isError
     }
 }
+
+extension Notification.Name {
+    static let vedaDeepLink    = Notification.Name("vedaDeepLink")
+    static let vedaSpotlightOpen = Notification.Name("vedaSpotlightOpen")
+}
