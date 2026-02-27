@@ -10,7 +10,7 @@ import AppleProductTypes
 let package = Package(
     name: "VedaAI",
     platforms: [
-        .iOS("17.0")
+        .iOS("26.0")
     ],
     products: [
         .iOSApplication(
@@ -32,11 +32,13 @@ let package = Package(
                 .landscapeLeft,
                 .portraitUpsideDown(.when(deviceFamilies: [.pad]))
             ],
+            urlSchemes: ["vedaai"],
             capabilities: [
                 .microphone(purposeString: "This app uses the microphone to capture your voice for AI interactions."),
                 .camera(purposeString: "This app uses the camera to capture images for AI analysis."),
                 .fileAccess(.pictureFolder, mode: .readWrite),
                 .speechRecognition(purposeString: "This app uses speech recognition to convert your voice into text for AI processing.")
+                .siri()
             ],
             appCategory: .education
         )

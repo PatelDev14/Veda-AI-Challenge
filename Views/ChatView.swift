@@ -5,6 +5,9 @@ struct ChatView: View {
     @State private var showingImagePicker = false
     @State private var imageSourceType: UIImagePickerController.SourceType = .camera
     @State private var keyboardHeight: CGFloat = 0
+    @State private var store = ConversationStore()
+    @State private var showHistory = false
+    @State private var historyRefreshID = UUID()  // bumped each time history opens to force reload
 
     var body: some View {
         ZStack {
@@ -20,19 +23,22 @@ struct ChatView: View {
                             viewModel.currentInput = suggestion
                             viewModel.sendMessage()
                         })
-                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        .transition(.opacity)
                     } else {
                         messageListView
                             .transition(.opacity)
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: viewModel.messages.isEmpty)
+                // Animate only when clearing (empty→WelcomeView).
+                // When first message arrives, skip animation to prevent blank frame jump.
+                .animation(
+                    viewModel.messages.isEmpty ? .easeInOut(duration: 0.2) : .none,
+                    value: viewModel.messages.isEmpty
+                )
 
                 // Bottom bar — always sticks above keyboard
                 bottomBar
             }
-            // This is the key: let the VStack ignore the keyboard safe area
-            // so we control positioning ourselves via keyboardHeight padding
             .ignoresSafeArea(.keyboard)
 
             // Overlays
@@ -54,6 +60,14 @@ struct ChatView: View {
             ImagePicker(sourceType: imageSourceType) { image in
                 withAnimation { viewModel.selectedImage = image }
             }
+        }
+        .sheet(isPresented: $showHistory) {
+            HistoryView(store: store, refreshID: historyRefreshID) { conversation, restored in
+                viewModel.restore(conversation: conversation, messages: restored)
+            }
+        }
+        .onChange(of: showHistory) {
+            if showHistory { historyRefreshID = UUID() }
         }
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.dark)
@@ -87,6 +101,12 @@ struct ChatView: View {
             animator.addAnimations { keyboardHeight = 0 }
             animator.startAnimation()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vedaDeepLink)) { note in
+            if let q = note.userInfo?["question"] as? String {
+                viewModel.currentInput = q
+                viewModel.sendMessage()
+            }
+        }
     }
 
     // MARK: - Bottom Bar (image strip + input, always above keyboard)
@@ -104,7 +124,14 @@ struct ChatView: View {
 
             InputBarView(
                 text: $viewModel.currentInput,
-                onSend: viewModel.sendMessage,
+                onSend: {
+                    // Dismiss keyboard immediately when message is sent
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                    viewModel.sendMessage()
+                },
                 onCameraTap: {
                     imageSourceType = .camera
                     showingImagePicker = true
@@ -148,7 +175,47 @@ struct ChatView: View {
 
             Spacer()
 
-            Button(action: { viewModel.clearChat() }) {
+            // Export button — only visible when there are messages
+            if !viewModel.messages.isEmpty {
+                ExportButton(messages: viewModel.messages)
+            }
+
+            // History button
+            Button {
+                // 1. Save or Update current progress before leaving the view
+                if !viewModel.messages.isEmpty {
+                    if let existing = viewModel.activeConversation {
+                        store.updateConversation(existing, messages: viewModel.messages)
+                    } else {
+                        store.saveConversation(messages: viewModel.messages)
+                    }
+                }
+                
+                // 2. Now show the history
+                showHistory = true
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.orange.opacity(0.8))
+                    .padding(12)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Circle().stroke(Color.orange.opacity(0.2), lineWidth: 0.5))
+                    )
+            }
+
+            // New chat button — saves or updates before clearing
+            Button {
+                if let existing = viewModel.activeConversation {
+                    // User was continuing a restored thread — update it in place
+                    store.updateConversation(existing, messages: viewModel.messages)
+                } else {
+                    // Fresh chat — create a new record
+                    store.saveConversation(messages: viewModel.messages)
+                }
+                viewModel.clearChat()
+            } label: {
                 Image(systemName: "plus.bubble.fill")
                     .font(.system(size: 14))
                     .foregroundStyle(.orange.opacity(0.8))
@@ -214,9 +281,13 @@ struct ChatView: View {
             .onChange(of: viewModel.isGenerating) {
                 withAnimation { proxy.scrollTo("bottom") }
             }
-            // Also scroll when keyboard appears so last message stays visible
             .onChange(of: keyboardHeight) {
                 withAnimation(.spring(response: 0.35)) { proxy.scrollTo("bottom") }
+            }
+            // Scroll to bottom immediately when the list first appears
+            // (covers both new chats and restored threads)
+            .onAppear {
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }
